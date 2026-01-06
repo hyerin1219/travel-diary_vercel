@@ -1,0 +1,197 @@
+import { useState } from "react";
+
+import { useAlert } from "@/hooks/useAlert";
+import { useBookmarks } from "@/hooks/useBookmarks";
+import { useDialog } from "@/hooks/useDialog";
+
+// shadcn
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+import { ColorList } from "../colorList";
+
+import type { Dispatch, SetStateAction } from "react";
+import type { ILogPlace } from "@/types";
+
+interface IMapsDialogProps {
+  selectedMarker: ILogPlace | null;
+  bookmark: {
+    _id: string;
+    name: string;
+    color: string;
+  };
+  setBookmark: Dispatch<SetStateAction<{ _id: string; name: string; color: string }>>;
+}
+
+export default function WriteBookmark({ bookmark, setBookmark, selectedMarker }: IMapsDialogProps) {
+  // 알림창 등
+  const { triggerAlert } = useAlert();
+
+  // 북마크 관련 훅
+  const { isOpen, onClickToggle, setIsOpen } = useDialog();
+  const { bookmarks, setBookmarks, createBookmark, deleteBookmark } = useBookmarks();
+
+  // 새 북마크 추가 시 사용하는 상태
+  const [newBookmark, setNewBookmark] = useState({ _id: "", name: "", color: "" });
+
+  // 새 북마크 추가 함수
+  const handleAddBookmark = async () => {
+    if (newBookmark.name.trim() === "") {
+      triggerAlert("여정의 이름을 입력해주세요!");
+      return;
+    }
+    if (newBookmark.color === "") {
+      triggerAlert("북마크의 색상을 선택해주세요!");
+      return;
+    }
+
+    // 중복 이름 검사
+    const isDuplicate = bookmarks.some((bm) => bm.name === newBookmark.name);
+    if (isDuplicate) {
+      triggerAlert("이미 존재하는 여정 이름입니다. 다른 이름을 입력해주세요.");
+      return;
+    }
+
+    try {
+      const savedBookmark = await createBookmark({
+        name: newBookmark.name,
+        color: newBookmark.color,
+      });
+
+      // if (!savedBookmark) return;
+
+      // 상태 업데이트
+      setBookmarks((prev) => [...prev, savedBookmark]);
+
+      // 새로 만든 북마크 바로 선택
+      setBookmark(savedBookmark);
+
+      // 입력 초기화 및 닫기
+      setNewBookmark({ _id: "", name: "", color: "" });
+      setIsOpen(false);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+    }
+  };
+
+  // 북마크 삭제 함수
+  const handleDeleteBookmark = async (_id: string) => {
+    deleteBookmark(_id);
+
+    // 상태에서 삭제
+    setBookmarks((prev) => prev.filter((bm) => bm._id !== _id));
+    // 만약 삭제한 북마크가 현재 선택된 북마크라면 초기화
+    if (bookmark._id === _id) {
+      setBookmark({ _id: "", name: "", color: "" });
+    }
+  };
+
+  // 새 북마크 색상 클릭 시 토글
+  const onClickNewBookmarkColor = (color: string) => {
+    setNewBookmark((prev) => ({ ...prev, color: prev.color === color ? "" : color }));
+  };
+
+  // 새 북마크 생성 취소
+  const onClickNewBookmarkCancel = () => {
+    setNewBookmark({ _id: "", name: "", color: "" });
+    setIsOpen(false);
+  };
+
+  // 기존 북마크 선택 시 상태 업데이트
+  const onClickSaveBookmark = (_id: string, name: string, color: string) => {
+    setBookmark({ _id, name, color });
+  };
+
+  const bookmarkColor = bookmark?.color || selectedMarker?.bookmark?.color || "default";
+  const bookmarkName = bookmark?.name || selectedMarker?.bookmark?.name || "여정을 선택하세요";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">
+          <img src={`/images/bookmark/icon_bookmarker_${bookmarkColor}.png`} alt="북마크 아이콘, 출처: figma Icons8" className="w-5 inline-block mr-1" />
+          <span className="inline-block align-middle">{bookmarkName}</span>
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent>
+        <DropdownMenuLabel>
+          {bookmarks.length > 0 ? (
+            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+              {bookmarks.map((bm) => (
+                <div key={bm._id} className="flex items-center gap-3 cursor-pointer">
+                  <DropdownMenuItem onClick={() => onClickSaveBookmark(bm._id, bm.name, bm.color)} className="flex items-center gap-1 cursor-pointer">
+                    <img src={`./images/bookmark/icon_bookmarker_${bm.color}.png`} alt="북마크 아이콘, 출처: figma Icons8" className="w-5" />
+                    <span>{bm.name}</span>
+                  </DropdownMenuItem>
+
+                  <Button
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteBookmark(bm._id);
+                    }}
+                    className="w-7 h-7 p-0 bg-[url(/images/icon_trash.png)] bg-[length:0.95rem] bg-no-repeat bg-center"
+                    aria-label="북마크 삭제"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div>여정을 만들어 보세요.</div>
+          )}
+        </DropdownMenuLabel>
+
+        <DropdownMenuSeparator />
+
+        {!isOpen && (
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.preventDefault();
+              onClickToggle();
+            }}
+          >
+            <img className="w-5 inline-block" src="./images/icon_plus.png" alt="여정 추가 아이콘, 출처: figma Icons8" />
+            <span>여정 추가하기</span>
+          </DropdownMenuItem>
+        )}
+
+        {isOpen && (
+          <div className="mt-2 px-4 py-2 border rounded-md bg-gray-50">
+            <div className="flex flex-col gap-3 w-full py-1">
+              <Input className="bg-white" placeholder="여정의 이름을 입력해주세요." value={newBookmark.name} onChange={(e) => setNewBookmark((prev) => ({ ...prev, name: e.target.value }))} />
+              <p className="text-sm">여정 색깔을 정해 주세요.</p>
+              <ul className="flex flex-wrap justify-center gap-1 w-full">
+                {ColorList.map(({ color }, idx) => (
+                  <li
+                    key={idx}
+                    onClick={() => onClickNewBookmarkColor(color)}
+                    style={{
+                      backgroundColor: newBookmark.color === color ? "#F1F5F9" : "transparent",
+                      borderColor: newBookmark.color === color ? "#ddd" : "transparent",
+                    }}
+                    className="cursor-pointer border rounded-sm"
+                  >
+                    <img className="w-8" src={`./images/bookmark/icon_bookmarker_${color}.png`} alt="북마크 아이콘, 출처: figma Icons8" />
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="close" onClick={onClickNewBookmarkCancel}>
+                  닫기
+                </Button>
+                <Button variant="input" type="button" onClick={handleAddBookmark}>
+                  추가
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
